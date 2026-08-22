@@ -25,14 +25,6 @@ def upgrade() -> None:
     platform_admin_status = postgresql.ENUM("active", "disabled", name="platform_admin_status")
     approval_decision = postgresql.ENUM("approved", "denied", name="approval_decision")
 
-    bind = op.get_bind()
-    organization_status.create(bind, checkfirst=True)
-    user_role.create(bind, checkfirst=True)
-    user_status.create(bind, checkfirst=True)
-    platform_admin_role.create(bind, checkfirst=True)
-    platform_admin_status.create(bind, checkfirst=True)
-    approval_decision.create(bind, checkfirst=True)
-
     op.create_table(
         "organizations",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -103,14 +95,3 @@ def downgrade() -> None:
     op.drop_index("ix_platform_admins_email", table_name="platform_admins")
     op.drop_table("platform_admins")
     op.drop_table("organizations")
-
-    bind = op.get_bind()
-    for enum_name in [
-        "approval_decision",
-        "platform_admin_status",
-        "platform_admin_role",
-        "user_status",
-        "user_role",
-        "organization_status",
-    ]:
-        postgresql.ENUM(name=enum_name).drop(bind, checkfirst=True)

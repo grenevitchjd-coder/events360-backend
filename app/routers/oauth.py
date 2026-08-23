@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.models.organization import Organization
+from app.models.event import Event
 from app.models.oauth_client import OAuthClient
 from app.models.oauth_authorization_code import OAuthAuthorizationCode
 from app.schemas.oauth import (
@@ -14,6 +15,7 @@ from app.schemas.oauth import (
     OAuthTokenRequest,
     OAuthTokenResponse,
     OAuthUserInfoResponse,
+    OAuthEventInfoResponse,
 )
 from app.services.security import generate_oauth_code, verify_password, create_access_token
 from app.services.deps import get_current_user, get_current_oauth_user
@@ -113,4 +115,25 @@ def userinfo(db: Session = Depends(get_db), user: User = Depends(get_current_oau
         name=user.name,
         email=user.email,
         role=user.role.value,
+    )
+
+
+@router.get("/events/{event_id}", response_model=OAuthEventInfoResponse)
+def get_event_for_downstream_app(
+    event_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_oauth_user)
+):
+    """
+    Lets a downstream app (EventNXT, etc.) verify an event_id is real and
+    belongs to the calling user's own organization, before building
+    anything against it — e.g. EventNXT checking an event exists and is
+    theirs before creating guests/invitations for it.
+    """
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event or event.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    return OAuthEventInfoResponse(
+        id=str(event.id),
+        organization_id=str(event.organization_id),
+        name=event.name,
+        status=event.status.value,
     )

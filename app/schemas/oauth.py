@@ -35,3 +35,10 @@ class OAuthUserInfoResponse(BaseModel):
     name: str
     email: str
     role: str
+
+
+class OAuthEventInfoResponse(BaseModel):
+    id: str
+    organization_id: str
+    name: str
+    status: str

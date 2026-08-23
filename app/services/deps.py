@@ -74,3 +74,18 @@ def require_superadmin(admin: PlatformAdmin = Depends(get_current_platform_admin
     if admin.role.value != "superadmin":
         raise HTTPException(status_code=403, detail="Superadmin access required.")
     return admin
+
+
+def require_org_admin(org_id: str, user: User = Depends(get_current_user)) -> User:
+    """
+    Use for endpoints that manage an org's roles, events, or staff.
+    Enforces two things: the user must be org_owner or org_admin (not staff),
+    AND the org_id in the URL must match the user's own organization —
+    this is the multi-tenant isolation check that stops one org's admin
+    from managing a different org's data.
+    """
+    if str(user.organization_id) != org_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this organization.")
+    if user.role.value not in ("org_owner", "org_admin"):
+        raise HTTPException(status_code=403, detail="Org admin access required.")
+    return user

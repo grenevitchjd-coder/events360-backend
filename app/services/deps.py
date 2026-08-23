@@ -13,6 +13,7 @@ from app.services.security import decode_access_token
 # for org users vs. platform admins.
 user_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 admin_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/login", auto_error=False)
+downstream_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/oauth/token", auto_error=False)
 
 
 def get_current_user(
@@ -101,4 +102,34 @@ def require_org_owner(org_id: str, user: User = Depends(get_current_user)) -> Us
         raise HTTPException(status_code=403, detail="You do not have access to this organization.")
     if user.role.value != "org_owner":
         raise HTTPException(status_code=403, detail="Only the organization owner can do this.")
+    return user
+
+
+def get_current_oauth_user(
+    token: str = Depends(downstream_oauth2_scheme), db: Session = Depends(get_db)
+) -> User:
+    """
+    Validates a token issued to a downstream app (EventNXT, etc.) via the
+    OAuth2 flow — distinct from get_current_user, which validates a token
+    issued directly to a user logging into Events360 itself. Used by
+    /oauth/userinfo, which downstream apps call to verify a token and get
+    the identity behind it (token introspection pattern — no shared secret
+    between services, downstream apps never decode the JWT themselves).
+    """
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials"
+    )
+    if not token:
+        raise credentials_error
+    try:
+        payload = decode_access_token(token)
+        if payload.get("type") != "oauth_access":
+            raise credentials_error
+        user_id = payload.get("sub")
+    except JWTError:
+        raise credentials_error
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None or user.status != UserStatus.ACTIVE:
+        raise credentials_error
     return user

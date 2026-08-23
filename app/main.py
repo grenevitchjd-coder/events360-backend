@@ -11,6 +11,7 @@ from app.routers import (
     staff_assignments,
     platform_admins,
     org_users,
+    oauth,
 )
 
 app = FastAPI(
@@ -35,6 +36,7 @@ app.include_router(roles.router)
 app.include_router(staff_assignments.router)
 app.include_router(platform_admins.router)
 app.include_router(org_users.router)
+app.include_router(oauth.router)
 
 
 @app.get("/health")

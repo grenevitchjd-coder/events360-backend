@@ -1,4 +1,5 @@
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from jose import jwt, JWTError
@@ -50,3 +51,8 @@ def create_access_token(subject: str, extra_claims: dict, expires_minutes: int |
 def decode_access_token(token: str) -> dict:
     """Raises JWTError if invalid/expired — callers should catch and return 401."""
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+
+
+def generate_oauth_code() -> str:
+    """A cryptographically random, URL-safe authorization code."""
+    return secrets.token_urlsafe(32)

@@ -125,6 +125,23 @@ def userinfo(db: Session = Depends(get_db), user: User = Depends(get_current_oau
     )
 
 
+@router.get("/events", response_model=list[OAuthEventInfoResponse])
+def list_events_for_downstream_app(db: Session = Depends(get_db), user: User = Depends(get_current_oauth_user)):
+    """
+    Lets a downstream app (EventNXT, etc.) list every event belonging to
+    the calling user's own org — powers a real event picker instead of
+    requiring an event_id to be pasted in by hand. org comes from the
+    token itself, so there's no way to list a different org's events.
+    """
+    events = db.query(Event).filter(Event.organization_id == user.organization_id).all()
+    return [
+        OAuthEventInfoResponse(
+            id=str(e.id), organization_id=str(e.organization_id), name=e.name, status=e.status.value
+        )
+        for e in events
+    ]
+
+
 @router.get("/events/{event_id}", response_model=OAuthEventInfoResponse)
 def get_event_for_downstream_app(
     event_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_oauth_user)

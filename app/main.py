@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.routers import organizations, auth, admin, events, roles, staff_assignments
+from app.routers import organizations, auth, admin, events, roles, staff_assignments, platform_admins
 
 app = FastAPI(
     title="Events360",
@@ -14,6 +14,7 @@ app.include_router(admin.router)
 app.include_router(events.router)
 app.include_router(roles.router)
 app.include_router(staff_assignments.router)
+app.include_router(platform_admins.router)
 
 
 @app.get("/health")

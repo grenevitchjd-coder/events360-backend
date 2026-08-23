@@ -10,8 +10,12 @@ from app.models.approval_log import OrganizationApprovalLog, ApprovalDecision
 from app.schemas.auth import TokenResponse
 from app.schemas.admin import PendingOrganizationResponse, ApprovalDecisionRequest
 from app.schemas.event import EventResponse
+from app.schemas.entitlement import ProductEntitlementResponse
 from app.services.security import verify_password, create_access_token
 from app.services.deps import get_current_platform_admin
+from app.services.entitlements import is_org_entitled, KNOWN_PRODUCTS
+from app.models.oauth_client import OAuthClient
+from app.models.product_entitlement import ProductEntitlement
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -241,3 +245,60 @@ def unlock_organization(
     org.status = OrganizationStatus.ACTIVE
     db.commit()
     return {"status": "active"}
+
+
+@router.get("/organizations/{org_id}/entitlements", response_model=list[ProductEntitlementResponse])
+def list_org_entitlements(
+    org_id: str, db: Session = Depends(get_db), _admin: PlatformAdmin = Depends(get_current_platform_admin)
+):
+    """Effective access state per known product, for the superadmin toggle UI."""
+    clients = db.query(OAuthClient).filter(OAuthClient.client_id.in_(KNOWN_PRODUCTS)).all()
+    results = []
+    for client in clients:
+        enabled = is_org_entitled(db, org_id, client.client_id)
+        results.append(
+            ProductEntitlementResponse(
+                product_key=client.client_id, name=client.name, enabled=enabled, launch_url=None
+            )
+        )
+    return results
+
+
+@router.post("/organizations/{org_id}/entitlements/{product_key}/disable")
+def disable_entitlement(
+    org_id: str,
+    product_key: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    row = (
+        db.query(ProductEntitlement)
+        .filter(ProductEntitlement.organization_id == org_id, ProductEntitlement.product_key == product_key)
+        .first()
+    )
+    if row:
+        row.enabled = False
+    else:
+        db.add(ProductEntitlement(organization_id=org_id, product_key=product_key, enabled=False))
+    db.commit()
+    return {"product_key": product_key, "enabled": False}
+
+
+@router.post("/organizations/{org_id}/entitlements/{product_key}/enable")
+def enable_entitlement(
+    org_id: str,
+    product_key: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    row = (
+        db.query(ProductEntitlement)
+        .filter(ProductEntitlement.organization_id == org_id, ProductEntitlement.product_key == product_key)
+        .first()
+    )
+    if row:
+        row.enabled = True
+    else:
+        db.add(ProductEntitlement(organization_id=org_id, product_key=product_key, enabled=True))
+    db.commit()
+    return {"product_key": product_key, "enabled": True}

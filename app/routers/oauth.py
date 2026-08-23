@@ -19,6 +19,7 @@ from app.schemas.oauth import (
 )
 from app.services.security import generate_oauth_code, verify_password, create_access_token
 from app.services.deps import get_current_user, get_current_oauth_user
+from app.services.entitlements import is_org_entitled
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
@@ -41,6 +42,12 @@ def authorize(
     client = db.query(OAuthClient).filter(OAuthClient.client_id == payload.client_id).first()
     if not client:
         raise HTTPException(status_code=400, detail="Unknown client_id.")
+
+    if not is_org_entitled(db, user.organization_id, client.client_id):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your organization does not currently have access to {client.name}.",
+        )
 
     allowed_uris = [u.strip() for u in client.redirect_uris.split(",")]
     if payload.redirect_uri not in allowed_uris:

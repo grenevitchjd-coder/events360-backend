@@ -23,4 +23,9 @@ class OAuthClient(Base):
     # Comma-separated list of allowed redirect URIs — the authorize/token
     # endpoints reject any redirect_uri not in this list.
     redirect_uris = Column(Text, nullable=False)
+    # The product's own SSO entry point (its backend's /auth/login URL) —
+    # lets Events360 render a real "Launch <product>" link for org users
+    # who are already logged in, without them ever seeing a second login
+    # screen.
+    launch_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

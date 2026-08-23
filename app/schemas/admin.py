@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class PendingOrganizationResponse(BaseModel):
     id: uuid.UUID
     name: str
+    owner_name: str
     owner_email: str
     status: str
     created_at: str

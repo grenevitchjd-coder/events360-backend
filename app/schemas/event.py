@@ -15,6 +15,7 @@ class EventResponse(BaseModel):
     organization_id: uuid.UUID
     name: str
     event_date: Optional[datetime] = None
+    status: str
     retention_days: int
     retention_reminder_sent_at: Optional[datetime] = None
 

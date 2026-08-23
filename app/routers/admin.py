@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.organization import Organization, OrganizationStatus
-from app.models.event import Event
+from app.models.event import Event, EventStatus
 from app.models.platform_admin import PlatformAdmin, PlatformAdminStatus
 from app.models.approval_log import OrganizationApprovalLog, ApprovalDecision
 from app.schemas.auth import TokenResponse
 from app.schemas.admin import PendingOrganizationResponse, ApprovalDecisionRequest
+from app.schemas.event import EventResponse
 from app.services.security import verify_password, create_access_token
 from app.services.deps import get_current_platform_admin
 
@@ -45,6 +46,7 @@ def list_pending_organizations(
             PendingOrganizationResponse(
                 id=org.id,
                 name=org.name,
+                owner_name=owner.name if owner else "unknown",
                 owner_email=owner.email if owner else "unknown",
                 status=org.status.value,
                 created_at=org.created_at.isoformat(),
@@ -68,6 +70,7 @@ def list_all_organizations(
             PendingOrganizationResponse(
                 id=org.id,
                 name=org.name,
+                owner_name=owner.name if owner else "unknown",
                 owner_email=owner.email if owner else "unknown",
                 status=org.status.value,
                 created_at=org.created_at.isoformat(),
@@ -156,6 +159,54 @@ def delete_event_as_admin(
         raise HTTPException(status_code=404, detail="Event not found.")
     db.delete(event)
     db.commit()
+
+
+@router.get("/organizations/{org_id}/events", response_model=list[EventResponse])
+def list_events_as_admin(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """Powers the expandable event rows under each org in the dashboard."""
+    return db.query(Event).filter(Event.organization_id == org_id).all()
+
+
+@router.post("/organizations/{org_id}/events/{event_id}/lock", response_model=EventResponse)
+def lock_event(
+    org_id: str,
+    event_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """
+    Superadmin/support action only — org admins have no self-service way to
+    lock their own events. Sets a status flag; actual enforcement against
+    event-scoped actions (blocking guest management, etc.) is future work
+    once EventNXT exists and checks event status via the API.
+    """
+    event = db.query(Event).filter(Event.id == event_id, Event.organization_id == org_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    event.status = EventStatus.LOCKED
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@router.post("/organizations/{org_id}/events/{event_id}/unlock", response_model=EventResponse)
+def unlock_event(
+    org_id: str,
+    event_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    event = db.query(Event).filter(Event.id == event_id, Event.organization_id == org_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    event.status = EventStatus.ACTIVE
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 @router.post("/organizations/{org_id}/lock")

@@ -46,6 +46,30 @@ def list_pending_organizations(
                 id=org.id,
                 name=org.name,
                 owner_email=owner.email if owner else "unknown",
+                status=org.status.value,
+                created_at=org.created_at.isoformat(),
+            )
+        )
+    return results
+
+
+@router.get("/organizations", response_model=list[PendingOrganizationResponse])
+def list_all_organizations(
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """All orgs regardless of status — the dashboard's main org browser,
+    used for lock/unlock/delete actions on already-approved orgs."""
+    orgs = db.query(Organization).all()
+    results = []
+    for org in orgs:
+        owner = next((u for u in org.users if u.role.value == "org_owner"), None)
+        results.append(
+            PendingOrganizationResponse(
+                id=org.id,
+                name=org.name,
+                owner_email=owner.email if owner else "unknown",
+                status=org.status.value,
                 created_at=org.created_at.isoformat(),
             )
         )

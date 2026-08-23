@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     email_from: str = "no-reply@eventsnxt.com"
     app_url: str = "http://localhost:8000"  # used in reminder email links
 
+    # CORS: comma-separated list of allowed frontend origins.
+    # Defaults to common local dev ports; add your real frontend's Heroku
+    # URL here once deployed (e.g. "https://events360-frontend.herokuapp.com").
+    cors_allowed_origins: str = "http://localhost:5173,http://localhost:3000"
+
     class Config:
         env_file = ".env"
         # Heroku's DATABASE_URL for Postgres sometimes comes as "postgres://",

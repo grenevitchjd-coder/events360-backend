@@ -8,6 +8,7 @@ class PendingOrganizationResponse(BaseModel):
     id: uuid.UUID
     name: str
     owner_email: str
+    status: str
     created_at: str
 
     class Config:

@@ -2,7 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import organizations, auth, admin, events, roles, staff_assignments, platform_admins
+from app.routers import (
+    organizations,
+    auth,
+    admin,
+    events,
+    roles,
+    staff_assignments,
+    platform_admins,
+    org_users,
+)
 
 app = FastAPI(
     title="Events360",
@@ -25,6 +34,7 @@ app.include_router(events.router)
 app.include_router(roles.router)
 app.include_router(staff_assignments.router)
 app.include_router(platform_admins.router)
+app.include_router(org_users.router)
 
 
 @app.get("/health")

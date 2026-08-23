@@ -33,9 +33,20 @@ class PlatformAdmin(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
 
-    role = Column(SAEnum(PlatformAdminRole, name="platform_admin_role"), nullable=False)
+    role = Column(
+        SAEnum(
+            PlatformAdminRole,
+            name="platform_admin_role",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+    )
     status = Column(
-        SAEnum(PlatformAdminStatus, name="platform_admin_status"),
+        SAEnum(
+            PlatformAdminStatus,
+            name="platform_admin_status",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
         default=PlatformAdminStatus.ACTIVE,
     )

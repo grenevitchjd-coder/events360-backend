@@ -26,7 +26,14 @@ class OrganizationApprovalLog(Base):
     organization_id = Column(UUID(as_uuid=True), nullable=True)  # nullable: org may later be deleted
     organization_name_snapshot = Column(String, nullable=False)
 
-    decision = Column(SAEnum(ApprovalDecision, name="approval_decision"), nullable=False)
+    decision = Column(
+        SAEnum(
+            ApprovalDecision,
+            name="approval_decision",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+    )
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("platform_admins.id"), nullable=False)
     notes = Column(Text, nullable=True)
 

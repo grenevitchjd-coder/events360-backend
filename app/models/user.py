@@ -30,8 +30,18 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
 
-    role = Column(SAEnum(UserRole, name="user_role"), nullable=False, default=UserRole.STAFF)
-    status = Column(SAEnum(UserStatus, name="user_status"), nullable=False, default=UserStatus.ACTIVE)
+    role = Column(
+        SAEnum(UserRole, name="user_role", values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+        default=UserRole.STAFF,
+    )
+    status = Column(
+        SAEnum(
+            UserStatus, name="user_status", values_callable=lambda enum_cls: [e.value for e in enum_cls]
+        ),
+        nullable=False,
+        default=UserStatus.ACTIVE,
+    )
 
     last_active_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())

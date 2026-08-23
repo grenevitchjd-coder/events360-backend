@@ -22,10 +22,15 @@ class Organization(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     status = Column(
-        SAEnum(OrganizationStatus, name="organization_status"),
+        SAEnum(
+            OrganizationStatus,
+            name="organization_status",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
         default=OrganizationStatus.PENDING_APPROVAL,
     )
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

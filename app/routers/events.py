@@ -17,7 +17,9 @@ def create_event(
     db: Session = Depends(get_db),
     user: User = Depends(require_org_admin),
 ):
-    event = Event(organization_id=org_id, name=payload.name, event_date=payload.event_date)
+    event = Event(
+        organization_id=org_id, name=payload.name, start_date=payload.start_date, end_date=payload.end_date
+    )
     db.add(event)
     db.commit()
     db.refresh(event)

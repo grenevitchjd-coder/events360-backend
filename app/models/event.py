@@ -25,7 +25,8 @@ class Event(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     name = Column(String, nullable=False)
-    event_date = Column(DateTime(timezone=True), nullable=True)
+    start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date = Column(DateTime(timezone=True), nullable=True)  # supports multi-day events
 
     status = Column(
         SAEnum(EventStatus, name="event_status", values_callable=lambda enum_cls: [e.value for e in enum_cls]),

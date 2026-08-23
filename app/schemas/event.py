@@ -2,19 +2,27 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class EventCreateRequest(BaseModel):
     name: str
-    event_date: Optional[datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None  # supports multi-day events
+
+    @model_validator(mode="after")
+    def check_end_after_start(self):
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date cannot be before start_date.")
+        return self
 
 
 class EventResponse(BaseModel):
     id: uuid.UUID
     organization_id: uuid.UUID
     name: str
-    event_date: Optional[datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     status: str
     retention_days: int
     retention_reminder_sent_at: Optional[datetime] = None

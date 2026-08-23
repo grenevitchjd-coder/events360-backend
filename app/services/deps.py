@@ -89,3 +89,16 @@ def require_org_admin(org_id: str, user: User = Depends(get_current_user)) -> Us
     if user.role.value not in ("org_owner", "org_admin"):
         raise HTTPException(status_code=403, detail="Org admin access required.")
     return user
+
+
+def require_org_owner(org_id: str, user: User = Depends(get_current_user)) -> User:
+    """
+    Stricter than require_org_admin — for destructive, irreversible actions
+    like deleting the organization itself. org_admin is deliberately NOT
+    enough here; only the org_owner can do this.
+    """
+    if str(user.organization_id) != org_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this organization.")
+    if user.role.value != "org_owner":
+        raise HTTPException(status_code=403, detail="Only the organization owner can do this.")
+    return user

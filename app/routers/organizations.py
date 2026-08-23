@@ -6,6 +6,7 @@ from app.models.organization import Organization, OrganizationStatus
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.organization import OrganizationSignupRequest, OrganizationResponse
 from app.services.security import hash_password
+from app.services.deps import require_org_owner
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -38,3 +39,21 @@ def signup_organization(payload: OrganizationSignupRequest, db: Session = Depend
     db.refresh(org)
 
     return org
+
+
+@router.delete("/{org_id}", status_code=204)
+def delete_own_organization(
+    org_id: str,
+    db: Session = Depends(get_db),
+    owner: User = Depends(require_org_owner),
+):
+    """
+    Self-service deletion: the org owner can delete their own organization
+    at any time. Cascades to every related record (users, events, roles,
+    staff assignments) via ON DELETE CASCADE at the database level.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    db.delete(org)
+    db.commit()

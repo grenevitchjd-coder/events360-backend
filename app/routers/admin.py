@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.organization import Organization, OrganizationStatus
+from app.models.event import Event
 from app.models.platform_admin import PlatformAdmin, PlatformAdminStatus
 from app.models.approval_log import OrganizationApprovalLog, ApprovalDecision
 from app.schemas.auth import TokenResponse
@@ -99,3 +100,69 @@ def deny_organization(
     )
     db.commit()
     return {"status": "denied"}
+
+
+@router.delete("/organizations/{org_id}", status_code=204)
+def delete_organization(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """
+    Superadmin (or support_admin — both have full operational access) can
+    delete any organization, regardless of status. Cascades to every
+    related record at the database level.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    db.delete(org)
+    db.commit()
+
+
+@router.delete("/organizations/{org_id}/events/{event_id}", status_code=204)
+def delete_event_as_admin(
+    org_id: str,
+    event_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    event = db.query(Event).filter(Event.id == event_id, Event.organization_id == org_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    db.delete(event)
+    db.commit()
+
+
+@router.post("/organizations/{org_id}/lock")
+def lock_organization(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """
+    Manual lock, e.g. for a lapsed subscription. Blocks access but preserves
+    all data — distinct from deletion. (Automatic triggering off a real
+    billing/renewal event is future work, once billing itself is built —
+    this endpoint is the mechanism a future webhook would call.)
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    org.status = OrganizationStatus.LOCKED
+    db.commit()
+    return {"status": "locked"}
+
+
+@router.post("/organizations/{org_id}/unlock")
+def unlock_organization(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    org.status = OrganizationStatus.ACTIVE
+    db.commit()
+    return {"status": "active"}

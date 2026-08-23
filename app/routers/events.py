@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -31,3 +31,17 @@ def list_events(
     user: User = Depends(require_org_admin),
 ):
     return db.query(Event).filter(Event.organization_id == org_id).all()
+
+
+@router.delete("/{event_id}", status_code=204)
+def delete_event(
+    org_id: str,
+    event_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_org_admin),
+):
+    event = db.query(Event).filter(Event.id == event_id, Event.organization_id == org_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    db.delete(event)
+    db.commit()

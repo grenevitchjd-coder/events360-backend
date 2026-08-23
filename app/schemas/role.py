@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class PermissionResponse(BaseModel):
     id: uuid.UUID
     key: str
+    category: str
     description: str
 
     class Config:

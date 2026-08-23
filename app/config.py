@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     # Password policy (documented in architecture doc)
     password_min_length: int = 8
 
+    # Email (SendGrid SMTP, same provider the original EventNXT app used).
+    # On Heroku, adding the SendGrid add-on auto-populates these env vars.
+    sendgrid_username: str = ""
+    sendgrid_password: str = ""
+    email_from: str = "no-reply@eventsnxt.com"
+    app_url: str = "http://localhost:8000"  # used in reminder email links
+
     class Config:
         env_file = ".env"
         # Heroku's DATABASE_URL for Postgres sometimes comes as "postgres://",

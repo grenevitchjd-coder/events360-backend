@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.event import Event
 from app.models.user import User
-from app.schemas.event import EventCreateRequest, EventResponse
+from app.schemas.event import EventCreateRequest, EventResponse, EventRetentionUpdateRequest
 from app.services.deps import require_org_admin
 
 router = APIRouter(prefix="/organizations/{org_id}/events", tags=["events"])
@@ -45,3 +45,24 @@ def delete_event(
         raise HTTPException(status_code=404, detail="Event not found.")
     db.delete(event)
     db.commit()
+
+
+@router.patch("/{event_id}/retention", response_model=EventResponse)
+def update_event_retention(
+    org_id: str,
+    event_id: str,
+    payload: EventRetentionUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_org_admin),
+):
+    """
+    Lets an org admin extend (or shorten) how long this event's data is kept
+    after the event date passes. Capped 1-90 days by the request schema.
+    """
+    event = db.query(Event).filter(Event.id == event_id, Event.organization_id == org_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    event.retention_days = payload.retention_days
+    db.commit()
+    db.refresh(event)
+    return event

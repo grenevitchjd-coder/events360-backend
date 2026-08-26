@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -42,3 +43,5 @@ class OAuthEventInfoResponse(BaseModel):
     organization_id: str
     name: str
     status: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None

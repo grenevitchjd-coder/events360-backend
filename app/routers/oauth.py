@@ -33,12 +33,6 @@ def authorize(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """
-    Called by the Events360 frontend (not the downstream app directly) once
-    it has confirmed the org user is logged in. Issues a short-lived,
-    single-use code the frontend then redirects the browser to the
-    downstream app's redirect_uri with.
-    """
     client = db.query(OAuthClient).filter(OAuthClient.client_id == payload.client_id).first()
     if not client:
         raise HTTPException(status_code=400, detail="Unknown client_id.")
@@ -70,12 +64,6 @@ def authorize(
 
 @router.post("/token", response_model=OAuthTokenResponse)
 def token(payload: OAuthTokenRequest, db: Session = Depends(get_db)):
-    """
-    Called by the downstream app's BACKEND (server-to-server, not the
-    browser) to exchange a code for an access token. Requires the client
-    secret, so only the real downstream app can complete this step even if
-    the code were somehow intercepted in the browser redirect.
-    """
     if payload.grant_type != "authorization_code":
         raise HTTPException(status_code=400, detail="Only authorization_code grant type is supported.")
 
@@ -110,11 +98,6 @@ def token(payload: OAuthTokenRequest, db: Session = Depends(get_db)):
 
 @router.get("/userinfo", response_model=OAuthUserInfoResponse)
 def userinfo(db: Session = Depends(get_db), user: User = Depends(get_current_oauth_user)):
-    """
-    Called by the downstream app's backend on each authenticated request
-    (token introspection pattern) to verify the token and get the identity
-    behind it — no shared secret needed between services.
-    """
     org = db.query(Organization).filter(Organization.id == user.organization_id).first()
     return OAuthUserInfoResponse(
         user_id=str(user.id),
@@ -136,7 +119,12 @@ def list_events_for_downstream_app(db: Session = Depends(get_db), user: User = D
     events = db.query(Event).filter(Event.organization_id == user.organization_id).all()
     return [
         OAuthEventInfoResponse(
-            id=str(e.id), organization_id=str(e.organization_id), name=e.name, status=e.status.value
+            id=str(e.id),
+            organization_id=str(e.organization_id),
+            name=e.name,
+            status=e.status.value,
+            start_date=e.start_date,
+            end_date=e.end_date,
         )
         for e in events
     ]
@@ -160,4 +148,6 @@ def get_event_for_downstream_app(
         organization_id=str(event.organization_id),
         name=event.name,
         status=event.status.value,
+        start_date=event.start_date,
+        end_date=event.end_date,
     )

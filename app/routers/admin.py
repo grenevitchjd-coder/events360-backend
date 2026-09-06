@@ -8,12 +8,16 @@ from app.models.organization import Organization, OrganizationStatus
 from app.models.event import Event, EventStatus
 from app.models.platform_admin import PlatformAdmin, PlatformAdminStatus
 from app.models.approval_log import OrganizationApprovalLog, ApprovalDecision
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.auth import TokenResponse, MessageResponse
-from app.schemas.admin import PendingOrganizationResponse, ApprovalDecisionRequest
+from app.schemas.admin import (
+    PendingOrganizationResponse,
+    ApprovalDecisionRequest,
+    AdminEventRow,
+    AdminOrgAdminRow,
+)
 from app.schemas.event import EventResponse
 from app.schemas.entitlement import ProductEntitlementResponse
-from app.schemas.user import OrgUserResponse
 from app.services.security import verify_password, create_access_token
 from app.services.deps import get_current_platform_admin
 from app.services.password_reset import issue_and_email_reset_link
@@ -307,23 +311,6 @@ def enable_entitlement(
     db.commit()
     return {"product_key": product_key, "enabled": True}
 
-@router.get("/organizations/{org_id}/users", response_model=list[OrgUserResponse])
-def list_org_users_as_admin(
-    org_id: str,
-    db: Session = Depends(get_db),
-    _admin: PlatformAdmin = Depends(get_current_platform_admin),
-):
-    """
-    Platform-admin view of everyone in an org — powers the People panel in
-    the Organizations expander, so support can help ANY person in an org
-    (send a password reset), not just the owner surfaced on the org row.
-    """
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found.")
-    return db.query(User).filter(User.organization_id == org_id).all()
-
-
 @router.post("/organizations/{org_id}/users/{user_id}/send-password-reset", response_model=MessageResponse)
 def send_org_user_password_reset_as_admin(
     org_id: str,
@@ -348,3 +335,66 @@ def send_org_user_password_reset_as_admin(
         created_by_admin_id=admin.id,
     )
     return MessageResponse(detail=detail)
+
+@router.get("/events", response_model=list[AdminEventRow])
+def list_all_events(
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """
+    Every event on the platform with its org name attached — one call
+    powers the admin Events tab (grouped by organization client-side)
+    instead of one request per org. Lock/unlock/delete reuse the existing
+    per-org event endpoints; rows carry organization_id for that.
+    """
+    rows = (
+        db.query(Event, Organization.name)
+        .join(Organization, Event.organization_id == Organization.id)
+        .order_by(Organization.name, Event.start_date.nulls_last(), Event.name)
+        .all()
+    )
+    return [
+        AdminEventRow(
+            id=event.id,
+            organization_id=event.organization_id,
+            organization_name=org_name,
+            name=event.name,
+            status=event.status.value,
+            start_date=event.start_date,
+            end_date=event.end_date,
+            retention_days=event.retention_days,
+        )
+        for event, org_name in rows
+    ]
+
+
+@router.get("/org-admins", response_model=list[AdminOrgAdminRow])
+def list_org_admins(
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """
+    Every org OWNER and ORG ADMIN across the platform — powers the admin
+    People tab, whose whole job is sending password reset links. Staff are
+    deliberately excluded: their lockouts are handled by their own org's
+    admins, keeping platform-side resets scoped to the people who run orgs.
+    """
+    rows = (
+        db.query(User, Organization.name)
+        .join(Organization, User.organization_id == Organization.id)
+        .filter(User.role.in_([UserRole.ORG_OWNER, UserRole.ORG_ADMIN]))
+        .order_by(Organization.name, User.role, User.name)
+        .all()
+    )
+    return [
+        AdminOrgAdminRow(
+            id=user.id,
+            organization_id=user.organization_id,
+            organization_name=org_name,
+            name=user.name,
+            email=user.email,
+            role=user.role.value,
+            status=user.status.value,
+        )
+        for user, org_name in rows
+    ]

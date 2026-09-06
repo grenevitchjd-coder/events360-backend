@@ -1,3 +1,4 @@
+# events360-backend/app/models/init.py
 from app.models.organization import Organization, OrganizationStatus  # noqa: F401
 from app.models.user import User, UserRole, UserStatus  # noqa: F401
 from app.models.platform_admin import PlatformAdmin, PlatformAdminRole, PlatformAdminStatus  # noqa: F401
@@ -9,3 +10,4 @@ from app.models.staff_assignment import StaffAssignment  # noqa: F401
 from app.models.oauth_client import OAuthClient  # noqa: F401
 from app.models.oauth_authorization_code import OAuthAuthorizationCode  # noqa: F401
 from app.models.product_entitlement import ProductEntitlement  # noqa: F401
+from app.models.password_reset_token import PasswordResetToken  # noqa: F401

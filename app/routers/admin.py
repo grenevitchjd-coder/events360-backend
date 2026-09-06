@@ -1,3 +1,4 @@
+# events360-backend/app/routers/admin.py
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -7,12 +8,15 @@ from app.models.organization import Organization, OrganizationStatus
 from app.models.event import Event, EventStatus
 from app.models.platform_admin import PlatformAdmin, PlatformAdminStatus
 from app.models.approval_log import OrganizationApprovalLog, ApprovalDecision
-from app.schemas.auth import TokenResponse
+from app.models.user import User
+from app.schemas.auth import TokenResponse, MessageResponse
 from app.schemas.admin import PendingOrganizationResponse, ApprovalDecisionRequest
 from app.schemas.event import EventResponse
 from app.schemas.entitlement import ProductEntitlementResponse
+from app.schemas.user import OrgUserResponse
 from app.services.security import verify_password, create_access_token
 from app.services.deps import get_current_platform_admin
+from app.services.password_reset import issue_and_email_reset_link
 from app.services.entitlements import is_org_entitled, KNOWN_PRODUCTS
 from app.models.oauth_client import OAuthClient
 from app.models.product_entitlement import ProductEntitlement
@@ -302,3 +306,45 @@ def enable_entitlement(
         db.add(ProductEntitlement(organization_id=org_id, product_key=product_key, enabled=True))
     db.commit()
     return {"product_key": product_key, "enabled": True}
+
+@router.get("/organizations/{org_id}/users", response_model=list[OrgUserResponse])
+def list_org_users_as_admin(
+    org_id: str,
+    db: Session = Depends(get_db),
+    _admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """
+    Platform-admin view of everyone in an org — powers the People panel in
+    the Organizations expander, so support can help ANY person in an org
+    (send a password reset), not just the owner surfaced on the org row.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    return db.query(User).filter(User.organization_id == org_id).all()
+
+
+@router.post("/organizations/{org_id}/users/{user_id}/send-password-reset", response_model=MessageResponse)
+def send_org_user_password_reset_as_admin(
+    org_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(get_current_platform_admin),
+):
+    """
+    Any platform admin (superadmin or support_admin) can email an org
+    person a single-use reset link — the platform-support side of the same
+    flow org admins have. The link goes to the account's own email; there is
+    deliberately no self-service request flow.
+    """
+    target = db.query(User).filter(User.id == user_id, User.organization_id == org_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found in this organization.")
+
+    detail = issue_and_email_reset_link(
+        db,
+        user=target,
+        initiated_by=f"{admin.name} (Events360 support)",
+        created_by_admin_id=admin.id,
+    )
+    return MessageResponse(detail=detail)

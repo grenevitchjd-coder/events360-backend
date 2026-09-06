@@ -1,3 +1,4 @@
+# events360-backend/app/routers/auth.py
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,8 +8,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User, UserStatus
 from app.models.organization import Organization, OrganizationStatus
-from app.schemas.auth import TokenResponse
-from app.services.security import verify_password, create_access_token
+from app.models.platform_admin import PlatformAdmin
+from app.models.password_reset_token import PasswordResetToken
+from app.schemas.auth import TokenResponse, PasswordResetRequest, PasswordResetCompleteResponse
+from app.services.security import verify_password, create_access_token, hash_password
+from app.services.password_reset import hash_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -53,3 +57,43 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         extra_claims={"type": "user", "org_id": str(user.organization_id), "role": user.role.value},
     )
     return TokenResponse(access_token=token)
+
+
+@router.post("/reset-password", response_model=PasswordResetCompleteResponse)
+def reset_password(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    """
+    Public endpoint that finishes a password reset. The link that carries the
+    token can only have been issued by an org owner/admin or a platform admin
+    (there is deliberately no self-service request flow), and was emailed to
+    the account's own address. Tokens are single-use, expire in 60 minutes,
+    and the new password goes through the same server-side policy as signup.
+    Works for both org Users and PlatformAdmins — the response says which,
+    so the frontend can link back to the right login page.
+    """
+    row = (
+        db.query(PasswordResetToken)
+        .filter(PasswordResetToken.token_hash == hash_token(payload.token))
+        .first()
+    )
+    if not row or row.used_at is not None:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has already been used.")
+    if row.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This reset link has expired. Ask for a new one.")
+
+    if row.user_id is not None:
+        account = db.query(User).filter(User.id == row.user_id).first()
+        account_type = "org_user"
+    else:
+        account = db.query(PlatformAdmin).filter(PlatformAdmin.id == row.platform_admin_id).first()
+        account_type = "platform_admin"
+    if account is None:
+        raise HTTPException(status_code=400, detail="This reset link no longer matches an account.")
+
+    account.password_hash = hash_password(payload.new_password)
+    row.used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return PasswordResetCompleteResponse(
+        account_type=account_type,
+        detail="Password updated. You can now sign in with your new password.",
+    )

@@ -1,3 +1,4 @@
+# events360-backend/app/models/oauth_client.py
 import uuid
 
 from sqlalchemy import Column, String, DateTime, Text

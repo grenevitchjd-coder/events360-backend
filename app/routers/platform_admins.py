@@ -1,11 +1,14 @@
+# events360-backend/app/routers/platform_admins.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.platform_admin import PlatformAdmin, PlatformAdminRole, PlatformAdminStatus
 from app.schemas.platform_admin import PlatformAdminCreateRequest, PlatformAdminResponse
+from app.schemas.auth import MessageResponse
 from app.services.security import hash_password
 from app.services.deps import require_superadmin, get_current_platform_admin
+from app.services.password_reset import issue_and_email_reset_link
 
 router = APIRouter(prefix="/admin/platform-admins", tags=["platform-admins"])
 
@@ -79,3 +82,27 @@ def enable_platform_admin(
     db.commit()
     db.refresh(target)
     return target
+
+@router.post("/{admin_id}/send-password-reset", response_model=MessageResponse)
+def send_platform_admin_password_reset(
+    admin_id: str,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_superadmin),
+):
+    """
+    Emails a platform admin a single-use password reset link. Restricted to
+    superadmins — matching the create/disable pattern for admin accounts.
+    Sending to yourself is allowed (it's just a password change with extra
+    steps). The link goes to the target's own email.
+    """
+    target = db.query(PlatformAdmin).filter(PlatformAdmin.id == admin_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Platform admin not found.")
+
+    detail = issue_and_email_reset_link(
+        db,
+        platform_admin=target,
+        initiated_by=f"{admin.name} (superadmin)",
+        created_by_admin_id=admin.id,
+    )
+    return MessageResponse(detail=detail)

@@ -1,11 +1,14 @@
+# events360-backend/app/routers/org_users.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import OrgUserCreateRequest, OrgUserResponse
+from app.schemas.auth import MessageResponse
 from app.services.security import hash_password
 from app.services.deps import require_org_admin
+from app.services.password_reset import issue_and_email_reset_link
 
 router = APIRouter(prefix="/organizations/{org_id}/users", tags=["org-users"])
 
@@ -70,3 +73,29 @@ def reactivate_org_user(
     db.commit()
     db.refresh(target)
     return target
+
+@router.post("/{user_id}/send-password-reset", response_model=MessageResponse)
+def send_org_user_password_reset(
+    org_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_org_admin),
+):
+    """
+    Emails the person a single-use password reset link. There is deliberately
+    no self-service "forgot password" endpoint — with no 2FA on the platform,
+    resets happen only when an org owner/admin (here) or a platform admin
+    initiates one for a person they already know. The link goes to the
+    account's own email; the initiator never sees or sets the new password.
+    """
+    target = db.query(User).filter(User.id == user_id, User.organization_id == org_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found in this organization.")
+
+    detail = issue_and_email_reset_link(
+        db,
+        user=target,
+        initiated_by=f"{admin.name} (an admin of your organization)",
+        created_by_user_id=admin.id,
+    )
+    return MessageResponse(detail=detail)

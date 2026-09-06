@@ -1,3 +1,4 @@
+# events360-backend/app/config.py
 from pydantic_settings import BaseSettings
 
 
@@ -15,12 +16,25 @@ class Settings(BaseSettings):
     # Password policy (documented in architecture doc)
     password_min_length: int = 8
 
-    # Email (SendGrid SMTP, same provider the original EventNXT app used).
-    # On Heroku, adding the SendGrid add-on auto-populates these env vars.
-    sendgrid_username: str = ""
-    sendgrid_password: str = ""
-    email_from: str = "no-reply@eventsnxt.com"
-    app_url: str = "http://localhost:8000"  # used in reminder email links
+    # Email — generic SMTP relay, provider swappable via config vars alone
+    # (the same pattern EventNXT uses; replaces the old hardcoded SendGrid
+    # relay). Current provider: Resend. Heroku config vars to set:
+    #   SMTP_HOST=smtp.resend.com
+    #   SMTP_PORT=587                (465 also supported — uses SSL instead)
+    #   SMTP_USERNAME=resend        (literally the word "resend")
+    #   SMTP_PASSWORD=<a Resend API key>
+    #   EMAIL_FROM=no-reply@events360.app
+    # EMAIL_FROM may include a display name: "Events360 <no-reply@events360.app>"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = "resend"
+    smtp_password: str = ""
+    email_from: str = "no-reply@events360.app"
+
+    app_url: str = "http://localhost:8000"  # backend URL, used in reminder email links
+    # The deployed frontend's URL — used to build links that land on frontend
+    # pages (the password reset page). Set FRONTEND_URL on Heroku.
+    frontend_url: str = "http://localhost:5173"
 
     # CORS: comma-separated list of allowed frontend origins.
     # Defaults to common local dev ports; add your real frontend's Heroku

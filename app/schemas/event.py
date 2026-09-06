@@ -1,3 +1,4 @@
+# events360-backend/app/schemas/event.py
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -15,6 +16,13 @@ class EventCreateRequest(BaseModel):
         if self.start_date and self.end_date and self.end_date < self.start_date:
             raise ValueError("end_date cannot be before start_date.")
         return self
+
+
+class EventUpdateRequest(EventCreateRequest):
+    """Editing an event's details — same shape and validation as create
+    (name required; dates optional, and sending null CLEARS a date back to
+    TBD). The edit form always submits all three fields, so this is a full
+    details update, not a sparse patch."""
 
 
 class EventResponse(BaseModel):

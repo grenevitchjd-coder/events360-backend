@@ -1,10 +1,16 @@
+# events360-backend/app/routers/events.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.event import Event
+from app.models.event import Event, EventStatus
 from app.models.user import User
-from app.schemas.event import EventCreateRequest, EventResponse, EventRetentionUpdateRequest
+from app.schemas.event import (
+    EventCreateRequest,
+    EventUpdateRequest,
+    EventResponse,
+    EventRetentionUpdateRequest,
+)
 from app.services.deps import require_org_admin
 
 router = APIRouter(prefix="/organizations/{org_id}/events", tags=["events"])
@@ -47,6 +53,39 @@ def delete_event(
         raise HTTPException(status_code=404, detail="Event not found.")
     db.delete(event)
     db.commit()
+
+
+@router.patch("/{event_id}", response_model=EventResponse)
+def update_event(
+    org_id: str,
+    event_id: str,
+    payload: EventUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_org_admin),
+):
+    """
+    Edit an event's name and dates — fixing a typo or rescheduling. Locked
+    events refuse edits (lock is a superadmin support action; editing around
+    it would defeat it). Note for downstream apps: Events360's dates are
+    AUTHORITATIVE for EventNXT — day-based setups there follow the new dates
+    on their own, but already-issued dated tickets keep their original dates
+    (the frontend warns about this when dates change).
+    """
+    event = db.query(Event).filter(Event.id == event_id, Event.organization_id == org_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+    if event.status == EventStatus.LOCKED:
+        raise HTTPException(
+            status_code=403,
+            detail="This event is locked and cannot be edited. Contact support.",
+        )
+
+    event.name = payload.name
+    event.start_date = payload.start_date
+    event.end_date = payload.end_date
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 @router.patch("/{event_id}/retention", response_model=EventResponse)

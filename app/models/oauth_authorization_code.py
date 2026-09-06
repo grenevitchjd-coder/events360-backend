@@ -19,7 +19,10 @@ class OAuthAuthorizationCode(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code = Column(String, unique=True, nullable=False, index=True)
     client_id = Column(UUID(as_uuid=True), ForeignKey("oauth_clients.id"), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    # CASCADE: codes are 10-minute single-use ephemera — they die with the
+    # user (migration 0012; deleting a staff member who had launched an app
+    # used to 500 on this FK).
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     redirect_uri = Column(String, nullable=False)  # must match exactly at token exchange
     scope = Column(String, nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)

@@ -6,7 +6,11 @@ from app.models.staff_assignment import StaffAssignment
 from app.models.user import User
 from app.models.role import Role
 from app.models.event import Event
-from app.schemas.staff_assignment import StaffAssignmentCreateRequest, StaffAssignmentResponse
+from app.schemas.staff_assignment import (
+    StaffAssignmentCreateRequest,
+    StaffAssignmentUpdateRequest,
+    StaffAssignmentResponse,
+)
 from app.services.permissions import require_org_permission
 
 router = APIRouter(prefix="/organizations/{org_id}/staff-assignments", tags=["staff"])
@@ -83,3 +87,54 @@ def delete_staff_assignment(
         raise HTTPException(status_code=404, detail="Staff assignment not found.")
     db.delete(assignment)
     db.commit()
+
+@router.patch("/{assignment_id}", response_model=StaffAssignmentResponse)
+def update_staff_assignment(
+    org_id: str,
+    assignment_id: str,
+    payload: StaffAssignmentUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_org_permission("events360.staff.manage")),
+):
+    """
+    Change an existing assignment's role and/or scope in place — so
+    "promote Door staff to Guest manager" or "widen this grant from one
+    event to org-wide" is one edit, not a remove-and-re-add. The person on
+    the assignment never changes here (that IS a remove-and-re-add,
+    deliberately). Same guards as creating: everything must belong to this
+    org, and staff can't touch their own grants.
+    """
+    assignment = (
+        db.query(StaffAssignment)
+        .join(User, StaffAssignment.user_id == User.id)
+        .filter(StaffAssignment.id == assignment_id, User.organization_id == org_id)
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found in this organization.")
+
+    if admin.role.value == "staff" and str(assignment.user_id) == str(admin.id):
+        raise HTTPException(status_code=403, detail="You can't change your own role assignments.")
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="Nothing to change.")
+
+    if "role_id" in fields and fields["role_id"]:
+        role = db.query(Role).filter(Role.id == fields["role_id"], Role.organization_id == org_id).first()
+        if not role:
+            raise HTTPException(status_code=404, detail="Role not found in this organization.")
+        assignment.role_id = fields["role_id"]
+
+    if "event_id" in fields:
+        if fields["event_id"]:
+            event = (
+                db.query(Event).filter(Event.id == fields["event_id"], Event.organization_id == org_id).first()
+            )
+            if not event:
+                raise HTTPException(status_code=404, detail="Event not found in this organization.")
+        assignment.event_id = fields["event_id"]  # null = org-wide
+
+    db.commit()
+    db.refresh(assignment)
+    return assignment

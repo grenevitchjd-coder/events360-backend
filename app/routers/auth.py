@@ -13,6 +13,8 @@ from app.models.password_reset_token import PasswordResetToken
 from app.schemas.auth import TokenResponse, PasswordResetRequest, PasswordResetCompleteResponse
 from app.services.security import verify_password, create_access_token, hash_password
 from app.services.password_reset import hash_token
+from app.services.deps import get_current_user
+from app.services.permissions import effective_permissions
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -97,3 +99,25 @@ def reset_password(payload: PasswordResetRequest, db: Session = Depends(get_db))
         account_type=account_type,
         detail="Password updated. You can now sign in with your new password.",
     )
+
+@router.get("/me")
+def org_me(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+    Who am I + my events360.* grants — powers the org dashboard's tab
+    gating, computed by the SAME effective_permissions the enforcement
+    uses. Only control-plane keys ship here; app grants (eventnxt.*) reach
+    their apps through /oauth/userinfo instead.
+    """
+    eff = effective_permissions(db, user)
+    scoped = lambda keys: sorted(k for k in keys if k.startswith("events360."))  # noqa: E731
+    return {
+        "user_id": str(user.id),
+        "organization_id": str(user.organization_id),
+        "name": user.name,
+        "role": user.role.value,
+        "permissions": {
+            "all": eff["all"],
+            "org_wide": scoped(eff["org_wide"]),
+            "by_event": {ev: scoped(keys) for ev, keys in eff["by_event"].items() if scoped(keys)},
+        },
+    }

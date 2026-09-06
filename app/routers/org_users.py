@@ -8,7 +8,7 @@ from app.models.staff_assignment import StaffAssignment
 from app.schemas.user import OrgUserCreateRequest, OrgUserResponse
 from app.schemas.auth import MessageResponse
 from app.services.security import hash_password
-from app.services.deps import require_org_admin
+from app.services.permissions import require_org_permission
 from app.services.password_reset import issue_and_email_reset_link
 
 router = APIRouter(prefix="/organizations/{org_id}/users", tags=["org-users"])
@@ -19,7 +19,7 @@ def create_org_user(
     org_id: str,
     payload: OrgUserCreateRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_org_admin),
+    admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
     """
     Adds a new person to the org. Creating an org_admin (not just staff) is
@@ -51,7 +51,7 @@ def create_org_user(
 def list_org_users(
     org_id: str,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_org_admin),
+    _admin: User = Depends(require_org_permission("events360.staff.view")),
 ):
     return db.query(User).filter(User.organization_id == org_id).all()
 
@@ -61,7 +61,7 @@ def reactivate_org_user(
     org_id: str,
     user_id: str,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_org_admin),
+    _admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
     """
     Manual reactivation after the 30-day inactivity job deactivates a staff
@@ -80,7 +80,7 @@ def send_org_user_password_reset(
     org_id: str,
     user_id: str,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_org_admin),
+    admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
     """
     Emails the person a single-use password reset link. There is deliberately
@@ -96,7 +96,7 @@ def send_org_user_password_reset(
     detail = issue_and_email_reset_link(
         db,
         user=target,
-        initiated_by=f"{admin.name} (an admin of your organization)",
+        initiated_by=f"{admin.name} (from your organization)",
         created_by_user_id=admin.id,
     )
     return MessageResponse(detail=detail)
@@ -121,7 +121,7 @@ def deactivate_org_user(
     org_id: str,
     user_id: str,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_org_admin),
+    admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
     """
     Manually deactivate an account — login is blocked until someone
@@ -144,7 +144,7 @@ def delete_org_user(
     org_id: str,
     user_id: str,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_org_admin),
+    admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
     """
     Permanently remove a person from the org. Their role assignments go

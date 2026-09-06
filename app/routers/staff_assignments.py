@@ -7,7 +7,7 @@ from app.models.user import User
 from app.models.role import Role
 from app.models.event import Event
 from app.schemas.staff_assignment import StaffAssignmentCreateRequest, StaffAssignmentResponse
-from app.services.deps import require_org_admin
+from app.services.permissions import require_org_permission
 
 router = APIRouter(prefix="/organizations/{org_id}/staff-assignments", tags=["staff"])
 
@@ -17,7 +17,7 @@ def create_staff_assignment(
     org_id: str,
     payload: StaffAssignmentCreateRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_org_admin),
+    admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
     # Validate the target user, role, and (optional) event all belong to this org —
     # prevents assigning someone else's user to your role, or vice versa.
@@ -49,7 +49,7 @@ def create_staff_assignment(
 def list_staff_assignments(
     org_id: str,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_org_admin),
+    admin: User = Depends(require_org_permission("events360.staff.view")),
 ):
     return (
         db.query(StaffAssignment)
@@ -64,7 +64,7 @@ def delete_staff_assignment(
     org_id: str,
     assignment_id: str,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_org_admin),
+    admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
     assignment = (
         db.query(StaffAssignment)

@@ -11,7 +11,7 @@ from app.schemas.event import (
     EventResponse,
     EventRetentionUpdateRequest,
 )
-from app.services.deps import require_org_admin
+from app.services.permissions import require_org_permission, require_org_permission_for_event
 
 router = APIRouter(prefix="/organizations/{org_id}/events", tags=["events"])
 
@@ -21,7 +21,7 @@ def create_event(
     org_id: str,
     payload: EventCreateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(require_org_admin),
+    user: User = Depends(require_org_permission("events360.events.manage")),
 ):
     event = Event(
         organization_id=org_id, name=payload.name, start_date=payload.start_date, end_date=payload.end_date
@@ -36,7 +36,7 @@ def create_event(
 def list_events(
     org_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(require_org_admin),
+    user: User = Depends(require_org_permission("events360.events.view")),
 ):
     return db.query(Event).filter(Event.organization_id == org_id).all()
 
@@ -46,7 +46,7 @@ def delete_event(
     org_id: str,
     event_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(require_org_admin),
+    user: User = Depends(require_org_permission_for_event("events360.events.manage")),
 ):
     event = db.query(Event).filter(Event.id == event_id, Event.organization_id == org_id).first()
     if not event:
@@ -61,7 +61,7 @@ def update_event(
     event_id: str,
     payload: EventUpdateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(require_org_admin),
+    user: User = Depends(require_org_permission_for_event("events360.events.manage")),
 ):
     """
     Edit an event's name and dates — fixing a typo or rescheduling. Locked
@@ -94,7 +94,7 @@ def update_event_retention(
     event_id: str,
     payload: EventRetentionUpdateRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(require_org_admin),
+    user: User = Depends(require_org_permission_for_event("events360.events.manage")),
 ):
     """
     Lets an org admin extend (or shorten) how long this event's data is kept

@@ -62,3 +62,54 @@ def user_has_permission(db: Session, user: User, permission_key: str, event_id: 
     if event_id is not None and permission_key in eff["by_event"].get(str(event_id), set()):
         return True
     return False
+
+# ---------------------------------------------------------------------------
+# Dependencies for Events360's OWN endpoints (the org control plane).
+# Owners/org admins pass everything (the all-shortcut inside
+# user_has_permission); staff pass only with the named events360.* grant.
+# The org_id match is the same multi-tenant fence require_org_admin has.
+
+from fastapi import Depends, HTTPException  # noqa: E402
+from app.database import get_db  # noqa: E402
+from app.services.deps import get_current_user  # noqa: E402
+
+
+def require_org_permission(permission_key: str):
+    """Org-level check (no event scoping) — for endpoints like listing or
+    adding staff, where an assignment scoped to one event wouldn't make
+    sense to honor."""
+
+    def dep(org_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> User:
+        if str(user.organization_id) != org_id:
+            raise HTTPException(status_code=403, detail="You do not have access to this organization.")
+        if not user_has_permission(db, user, permission_key):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Your role doesn't include this ({permission_key}).",
+            )
+        return user
+
+    return dep
+
+
+def require_org_permission_for_event(permission_key: str):
+    """Like require_org_permission, but honors event-scoped assignments:
+    a role granting events360.events.manage on ONE event lets its holder
+    edit that event and no other. Only for routes with {event_id}."""
+
+    def dep(
+        org_id: str,
+        event_id: str,
+        db: Session = Depends(get_db),
+        user: User = Depends(get_current_user),
+    ) -> User:
+        if str(user.organization_id) != org_id:
+            raise HTTPException(status_code=403, detail="You do not have access to this organization.")
+        if not user_has_permission(db, user, permission_key, event_id):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Your role doesn't include this ({permission_key}) for this event.",
+            )
+        return user
+
+    return dep

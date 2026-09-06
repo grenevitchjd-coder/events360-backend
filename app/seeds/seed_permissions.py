@@ -28,6 +28,20 @@ from app.models.role import role_permissions
 
 # (key, category, description)
 CATALOG = [
+    # --- Events360 itself (the org control plane): staff can be granted
+    # org-management powers WITHOUT the org_admin implicit-everything —
+    # e.g. run the org's staff list while never seeing EventNXT financials.
+    # Roles management and org settings deliberately stay owner/admin-only:
+    # a role that can edit roles can grant itself anything (escalation).
+    ("events360.events.view", "Events360",
+     "See the organization's events in Events360"),
+    ("events360.events.manage", "Events360",
+     "Create, edit, reschedule, and delete the organization's events"),
+    ("events360.staff.view", "Events360",
+     "See the organization's people and role assignments"),
+    ("events360.staff.manage", "Events360",
+     "Add, deactivate, and remove people; manage role assignments; send password resets"),
+
     # --- EventNXT: five areas x view/manage, plus check-in ---
     ("eventnxt.setup.view", "EventNXT",
      "See event configuration — Event settings, Tickets & seating, Guest types, Seating summary"),

@@ -1,3 +1,4 @@
+# events360-backend/app/schemas/role.py
 import uuid
 from typing import List
 
@@ -17,6 +18,11 @@ class PermissionResponse(BaseModel):
 class RoleCreateRequest(BaseModel):
     name: str
     permission_keys: List[str]  # e.g. ["manage_guests", "view_reports"]
+
+
+class RoleUpdateRequest(RoleCreateRequest):
+    """Editing a role — same shape as create: the permission_keys list
+    REPLACES the role's current set."""
 
 
 class RoleResponse(BaseModel):

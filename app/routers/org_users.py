@@ -9,7 +9,9 @@ from app.schemas.user import OrgUserCreateRequest, OrgUserResponse
 from app.schemas.auth import MessageResponse
 from app.services.security import hash_password
 from app.services.permissions import require_org_permission
-from app.services.password_reset import issue_and_email_reset_link
+from app.services.password_reset import issue_and_email_reset_link, issue_and_email_invite_link
+from app.models.organization import Organization
+import secrets
 
 router = APIRouter(prefix="/organizations/{org_id}/users", tags=["org-users"])
 
@@ -33,17 +35,39 @@ def create_org_user(
     if existing:
         raise HTTPException(status_code=400, detail="A user with this email already exists.")
 
+    # The account starts with an unusable random password; the invite email's
+    # set-password link is the only way a real one gets created.
     new_user = User(
         organization_id=org_id,
         name=payload.name,
         email=payload.email,
-        password_hash=hash_password(payload.password),
+        password_hash=hash_password(secrets.token_urlsafe(32)),
         role=UserRole(payload.role),
         status=UserStatus.ACTIVE,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    try:
+        issue_and_email_invite_link(
+            db,
+            user=new_user,
+            org_name=org.name if org else "your organization",
+            initiated_by=admin.name,
+            created_by_user_id=admin.id,
+        )
+    except HTTPException:
+        # No invite = no way to ever log in. Undo the creation entirely so a
+        # failed email never strands an unreachable account (token rows
+        # cascade with the user), and tell the organizer nothing was made.
+        db.delete(new_user)
+        db.commit()
+        raise HTTPException(
+            status_code=502,
+            detail="The invite email could not be sent, so the person was NOT added. Check the server's email settings and try again.",
+        )
     return new_user
 
 

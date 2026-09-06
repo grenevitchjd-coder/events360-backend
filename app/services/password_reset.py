@@ -28,6 +28,12 @@ def hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
+# Invites (a brand-new person setting their FIRST password) get a longer
+# window than resets: the email may not be opened until tomorrow. Same
+# single-use, newest-wins token rows either way.
+INVITE_TOKEN_LIFETIME_MINUTES = 7 * 24 * 60
+
+
 def issue_reset_token(
     db: Session,
     *,
@@ -35,6 +41,7 @@ def issue_reset_token(
     platform_admin: PlatformAdmin | None = None,
     created_by_user_id=None,
     created_by_admin_id=None,
+    lifetime_minutes: int = RESET_TOKEN_LIFETIME_MINUTES,
 ) -> str:
     """
     Creates a fresh reset token for the account and COMMITS it, returning the
@@ -60,7 +67,7 @@ def issue_reset_token(
             user_id=user.id if user else None,
             platform_admin_id=platform_admin.id if platform_admin else None,
             token_hash=hash_token(raw_token),
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_LIFETIME_MINUTES),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=lifetime_minutes),
             created_by_user_id=created_by_user_id,
             created_by_admin_id=created_by_admin_id,
         )
@@ -124,3 +131,43 @@ def issue_and_email_reset_link(
             ),
         )
     return f"Password reset link emailed to {account.email}."
+
+def issue_and_email_invite_link(db: Session, *, user: User, org_name: str, initiated_by: str, created_by_user_id=None) -> str:
+    """
+    Welcome flow for a newly added person: their account starts with an
+    unusable random password, and this email's set-password link (the same
+    public /reset-password page) is the ONLY way a first password gets
+    created — organizers never type or know anyone's password. 7-day,
+    single-use link; "Send reset link" reissues if it lapses. Same 502
+    honesty as resets when email can't go out.
+    """
+    raw_token = issue_reset_token(
+        db,
+        user=user,
+        created_by_user_id=created_by_user_id,
+        lifetime_minutes=INVITE_TOKEN_LIFETIME_MINUTES,
+    )
+    link = build_reset_link(raw_token)
+
+    subject = f"You've been added to {org_name} on Events360"
+    body = (
+        f"Hi {user.name},\n\n"
+        f"{initiated_by} added you to {org_name} on Events360.\n\n"
+        f"Set your password to get started:\n{link}\n\n"
+        f"This link works once and expires in 7 days. If it lapses, ask your "
+        f"organizer to send you a fresh one from the Staff page.\n"
+    )
+
+    try:
+        sent = email_service.send_email(to=user.email, subject=subject, body=body)
+    except (smtplib.SMTPException, OSError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not send the invite email: {exc}",
+        )
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail="Email is not configured on the server (SMTP settings missing), so the invite could not be sent.",
+        )
+    return f"Invite sent to {user.email}."

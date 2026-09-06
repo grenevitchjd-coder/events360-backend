@@ -19,6 +19,13 @@ def create_staff_assignment(
     db: Session = Depends(get_db),
     admin: User = Depends(require_org_permission("events360.staff.manage")),
 ):
+    # Staff holding events360.staff.manage can hand out EXISTING roles to
+    # others but never to themselves — otherwise the grant quietly includes
+    # every role in the org (self-assign Finance, walk into money). Owners
+    # and org admins are exempt (they implicitly have everything anyway).
+    if admin.role.value == "staff" and str(payload.user_id) == str(admin.id):
+        raise HTTPException(status_code=403, detail="You can't assign roles to yourself.")
+
     # Validate the target user, role, and (optional) event all belong to this org —
     # prevents assigning someone else's user to your role, or vice versa.
     target_user = db.query(User).filter(User.id == payload.user_id, User.organization_id == org_id).first()

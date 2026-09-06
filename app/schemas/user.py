@@ -8,17 +8,11 @@ from app.services.security import validate_password_policy
 
 
 class OrgUserCreateRequest(BaseModel):
+    # No password field: the person sets their own via the emailed invite
+    # link — organizers never type or know anyone's password.
     name: str
     email: EmailStr
-    password: str
     role: Literal["org_admin", "staff"]  # org_owner is set only at signup, never here
-
-    @field_validator("password")
-    @classmethod
-    def check_password_policy(cls, v: str) -> str:
-        validate_password_policy(v)
-        return v
-
 
 class OrgUserResponse(BaseModel):
     id: uuid.UUID

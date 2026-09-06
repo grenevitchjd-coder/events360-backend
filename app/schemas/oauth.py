@@ -1,3 +1,4 @@
+# events360-backend/app/schemas/oauth.py
 from datetime import datetime
 from typing import Optional
 
@@ -30,12 +31,23 @@ class OAuthTokenResponse(BaseModel):
     expires_in: int
 
 
+class OAuthPermissions(BaseModel):
+    """The user's effective grants for the CALLING app (keys are filtered
+    to the client's own namespace — EventNXT never sees CastNXT grants).
+    all=True means owner/org_admin: implicit everything, lists empty."""
+
+    all: bool
+    org_wide: list[str] = []
+    by_event: dict[str, list[str]] = {}
+
+
 class OAuthUserInfoResponse(BaseModel):
     user_id: str
     organization_id: str
     name: str
     email: str
     role: str
+    permissions: OAuthPermissions
 
 
 class OAuthEventInfoResponse(BaseModel):

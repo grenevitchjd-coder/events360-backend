@@ -1,3 +1,4 @@
+# events360-backend/app/routers/oauth.py
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,11 +16,13 @@ from app.schemas.oauth import (
     OAuthTokenRequest,
     OAuthTokenResponse,
     OAuthUserInfoResponse,
+    OAuthPermissions,
     OAuthEventInfoResponse,
 )
-from app.services.security import generate_oauth_code, verify_password, create_access_token
-from app.services.deps import get_current_user, get_current_oauth_user
+from app.services.security import generate_oauth_code, verify_password, create_access_token, decode_access_token
+from app.services.deps import get_current_user, get_current_oauth_user, downstream_oauth2_scheme
 from app.services.entitlements import is_org_entitled
+from app.services.permissions import effective_permissions
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
@@ -97,14 +100,43 @@ def token(payload: OAuthTokenRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/userinfo", response_model=OAuthUserInfoResponse)
-def userinfo(db: Session = Depends(get_db), user: User = Depends(get_current_oauth_user)):
-    org = db.query(Organization).filter(Organization.id == user.organization_id).first()
+def userinfo(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_oauth_user),
+    token: str = Depends(downstream_oauth2_scheme),
+):
+    """
+    Token introspection for downstream apps — now carrying the user's
+    effective permissions, computed by the SAME function Events360's own
+    enforcement uses (services.permissions.effective_permissions), so what
+    the app displays and what gets enforced can never drift. Keys are
+    filtered to the calling client's namespace (client_id is the first key
+    segment by convention: "eventnxt" -> "eventnxt.*"); owners/org admins
+    come back as all=True with empty lists — implicit everything.
+    """
+    eff = effective_permissions(db, user)
+
+    # The token's client_id claim says which app is asking; scope the
+    # payload to that app's keys. (No claim -> no filter, older tokens.)
+    client_id = decode_access_token(token).get("client_id")
+    prefix = f"{client_id}." if client_id else ""
+
+    def scoped(keys):
+        return sorted(k for k in keys if k.startswith(prefix))
+
+    permissions = OAuthPermissions(
+        all=eff["all"],
+        org_wide=scoped(eff["org_wide"]),
+        by_event={ev: scoped(keys) for ev, keys in eff["by_event"].items() if scoped(keys)},
+    )
+
     return OAuthUserInfoResponse(
         user_id=str(user.id),
         organization_id=str(user.organization_id),
         name=user.name,
         email=user.email,
         role=user.role.value,
+        permissions=permissions,
     )
 
 

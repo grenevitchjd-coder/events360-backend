@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User, UserRole, UserStatus
+from app.models.staff_assignment import StaffAssignment
 from app.schemas.user import OrgUserCreateRequest, OrgUserResponse
 from app.schemas.auth import MessageResponse
 from app.services.security import hash_password
@@ -99,3 +100,64 @@ def send_org_user_password_reset(
         created_by_user_id=admin.id,
     )
     return MessageResponse(detail=detail)
+
+def _guard_target(admin: User, target: User, action: str) -> None:
+    """Shared rules for deactivate/delete: never yourself (no self-lockout),
+    never the org owner (the account that anchors the org), and acting on
+    another org_admin takes the owner — mirroring who can CREATE admins."""
+    if str(target.id) == str(admin.id):
+        raise HTTPException(status_code=400, detail=f"You cannot {action} your own account.")
+    if target.role == UserRole.ORG_OWNER:
+        raise HTTPException(status_code=400, detail=f"The organization owner cannot be {action}d.")
+    if target.role == UserRole.ORG_ADMIN and admin.role.value != "org_owner":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Only the organization owner can {action} another admin.",
+        )
+
+
+@router.post("/{user_id}/deactivate", response_model=OrgUserResponse)
+def deactivate_org_user(
+    org_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_org_admin),
+):
+    """
+    Manually deactivate an account — login is blocked until someone
+    reactivates it. Role assignments and history stay intact, so this is
+    the right tool for "left for the season" or "pause access now".
+    """
+    target = db.query(User).filter(User.id == user_id, User.organization_id == org_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found in this organization.")
+    _guard_target(admin, target, "deactivate")
+
+    target.status = UserStatus.INACTIVE
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.delete("/{user_id}", status_code=204)
+def delete_org_user(
+    org_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_org_admin),
+):
+    """
+    Permanently remove a person from the org. Their role assignments go
+    with them (explicitly, below — no dangling grants); anything they
+    created stays. For a temporary pause, use deactivate instead.
+    """
+    target = db.query(User).filter(User.id == user_id, User.organization_id == org_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found in this organization.")
+    _guard_target(admin, target, "delete")
+
+    db.query(StaffAssignment).filter(StaffAssignment.user_id == target.id).delete(
+        synchronize_session=False
+    )
+    db.delete(target)
+    db.commit()

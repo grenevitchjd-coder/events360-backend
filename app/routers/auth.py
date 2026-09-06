@@ -31,7 +31,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=403,
-            detail="This account has been deactivated due to inactivity. Contact your org admin.",
+            detail="This account has been deactivated. Contact your org admin.",
         )
 
     org = db.query(Organization).filter(Organization.id == user.organization_id).first()
